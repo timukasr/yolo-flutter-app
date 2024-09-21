@@ -1,3 +1,7 @@
+## 0.0.4
+
+- Fix closeCamera on iOS
+
 ## 0.0.3
 
 - Fix live prediction

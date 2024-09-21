@@ -38,7 +38,7 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
 	if call.method == "closeCamera" {
-	  videoCapture.stop()
+	  closeCamera()
 	  return
 	}
 
@@ -147,7 +147,7 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
     //        startCameraPreview(position: direction == 0 ? .back : .front)
   }
 
-  private func closeCamera(args: [String: Any], result: @escaping FlutterResult) {
+  private func closeCamera() {
     videoCapture.stop()
   }
 
