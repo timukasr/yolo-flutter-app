@@ -37,6 +37,11 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+	if call.method == "closeCamera" {
+	  videoCapture.stop()
+	  return
+	}
+
     guard let args = call.arguments as? [String: Any] else {
       return
     }
@@ -52,8 +57,6 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
       setNumItemsThreshold(args: args, result: result)
     } else if call.method == "setLensDirection" {
       setLensDirection(args: args, result: result)
-    } else if call.method == "closeCamera" {
-      closeCamera(args: args, result: result)
     } else if call.method == "detectImage" || call.method == "classifyImage" {
       predictOnImage(args: args, result: result)
     }
