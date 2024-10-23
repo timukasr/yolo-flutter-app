@@ -36,7 +36,7 @@ public class VideoCapture: NSObject {
   let videoOutput = AVCaptureVideoDataOutput()
   var photoOutput = AVCapturePhotoOutput()
   let cameraQueue = DispatchQueue(label: "camera-queue")
-  var lastCapturedPhoto: UIImage? = nil
+  var captureCompletion: ((String?) -> Void)?
 
   public func setUp(
     sessionPreset: AVCaptureSession.Preset = .hd1280x720,
@@ -113,6 +113,21 @@ public class VideoCapture: NSObject {
     captureSession.commitConfiguration()
     return true
   }
+    
+    public func takePicture(completion: @escaping (String?) -> Void)  {
+        let photoSettings = AVCapturePhotoSettings()
+
+        if captureDevice?.isFlashAvailable == true {
+            photoSettings.flashMode = .auto
+        }
+        
+        captureCompletion = completion
+
+        cameraQueue.async {
+            self.photoOutput.capturePhoto(with: photoSettings, delegate: self)
+        }
+    }
+
 
   public func start() {
     if !captureSession.isRunning {
@@ -155,12 +170,31 @@ extension VideoCapture: AVCapturePhotoCaptureDelegate {
   public func photoOutput(
     _ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?
   ) {
-    guard let data = photo.fileDataRepresentation(),
-      let image = UIImage(data: data)
-    else {
-      return
-    }
+      guard let data = photo.fileDataRepresentation() else {
+          captureCompletion?(nil)
+          return
+      }
 
-    self.lastCapturedPhoto = image
+      saveToDisk(imageData: data) { fileName in
+          captureCompletion?(fileName)
+      }
   }
+    
+    private func saveToDisk(imageData: Data, completion: (String?) -> Void) {
+       guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+          completion(nil)
+          return
+       }
+
+       let fileName = "dominoes_\(UUID().uuidString).jpg"
+       let fileURL = documentsDirectory.appendingPathComponent(fileName)
+       
+       do {
+           try imageData.write(to: fileURL)
+           completion(fileName)
+       } catch {
+           completion(nil)
+       }
+     }
 }
+

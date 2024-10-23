@@ -37,10 +37,15 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
-	if call.method == "closeCamera" {
-	  closeCamera()
-	  return
-	}
+    if call.method == "closeCamera" {
+      closeCamera()
+      return
+    }
+
+    if call.method == "takePicture" {
+      takePicture(result: result)
+      return
+    }
 
     guard let args = call.arguments as? [String: Any] else {
       return
@@ -150,6 +155,17 @@ class MethodCallHandler: VideoCaptureDelegate, InferenceTimeListener, ResultsLis
   private func closeCamera() {
     videoCapture.stop()
   }
+
+  private func takePicture(result: @escaping FlutterResult) {
+      videoCapture.takePicture { fileName in
+          if let fileName = fileName {
+              result(fileName)
+          } else {
+              result(nil)
+          }
+      }
+  }
+
 
   private func createCIImage(fromPath path: String) throws -> CIImage? {
     let url = URL(fileURLWithPath: path)

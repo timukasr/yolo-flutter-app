@@ -28,8 +28,7 @@ class UltralyticsYoloCameraValue {
 }
 
 /// ValueNotifier that holds the state of the camera
-class UltralyticsYoloCameraController
-    extends ValueNotifier<UltralyticsYoloCameraValue> {
+class UltralyticsYoloCameraController extends ValueNotifier<UltralyticsYoloCameraValue> {
   /// Constructor to create an instance of [UltralyticsYoloCameraController]
   UltralyticsYoloCameraController()
       : super(
@@ -56,6 +55,16 @@ class UltralyticsYoloCameraController
   /// Closes the camera
   Future<void> closeCamera() async {
     await _ultralyticsYoloPlatform.closeCamera();
+  }
+
+  /// Take picture
+  Future<String?> takePicture() async {
+    try {
+      final fileName = await _ultralyticsYoloPlatform.takePicture();
+      return fileName;
+    } catch (e) {
+      return null;
+    }
   }
 
   /// Starts the camera

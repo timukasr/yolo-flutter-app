@@ -58,8 +58,13 @@ abstract class UltralyticsYoloPlatform extends PlatformInterface {
   }
 
   /// Close the camera.
-  Future<String?> closeCamera() {
+  Future<void> closeCamera() {
     throw UnimplementedError('closeCamera has not been implemented.');
+  }
+
+  /// Take a picture.
+  Future<String?> takePicture() {
+    throw UnimplementedError('takePicture has not been implemented.');
   }
 
   /// Start the camera.
