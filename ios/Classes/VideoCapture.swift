@@ -54,10 +54,6 @@ public class VideoCapture: NSObject {
     }
   }
 
-  public var filteredFrame: CGRect {
-  return filterLayer?.frame ?? .zero
-}
-
   func createSampleBuffer(from ciImage: CIImage, context: CIContext, size: CGSize)
     -> CMSampleBuffer?
   {
@@ -251,15 +247,17 @@ extension VideoCapture: AVCaptureVideoDataOutputSampleBufferDelegate {
     DispatchQueue.main.async {
       if self.filterLayer == nil {
         let newLayer = CALayer()
-
         newLayer.frame = UIScreen.main.bounds
         newLayer.contentsGravity = .resizeAspectFill
         self.filterLayer = newLayer
+      }
 
-        if let superlayer = self.previewLayer?.superlayer {
-          self.previewLayer?.removeFromSuperlayer() 
-          superlayer.addSublayer(newLayer)
-        }
+      if let filterLayer = self.filterLayer,
+        filterLayer.superlayer == nil,
+        let superlayer = self.previewLayer?.superlayer
+      {
+        self.previewLayer?.removeFromSuperlayer()
+        superlayer.addSublayer(filterLayer)
       }
 
       if let cgImage = self.ciContext.createCGImage(ciImage, from: ciImage.extent) {
