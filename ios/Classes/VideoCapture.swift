@@ -243,7 +243,6 @@ extension VideoCapture: AVCaptureVideoDataOutputSampleBufferDelegate {
       delegate?.videoCapture(self, didCaptureVideoFrame: grayscaleSampleBuffer)
     }
 
-    // Render grayscale image to filterLayer
     DispatchQueue.main.async {
       if self.filterLayer == nil {
         let newLayer = CALayer()
@@ -252,16 +251,23 @@ extension VideoCapture: AVCaptureVideoDataOutputSampleBufferDelegate {
         self.filterLayer = newLayer
       }
 
+      // Only add the filterLayer to the view once (if it was removed externally)
       if let filterLayer = self.filterLayer,
         filterLayer.superlayer == nil,
-        let superlayer = self.previewLayer?.superlayer
+        let previewLayer = self.previewLayer,
+        let superlayer = previewLayer.superlayer
       {
-        self.previewLayer?.removeFromSuperlayer()
+
+        previewLayer.removeFromSuperlayer()  // remove original color preview
         superlayer.addSublayer(filterLayer)
       }
 
+      // Update image contents each frame
       if let cgImage = self.ciContext.createCGImage(ciImage, from: ciImage.extent) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)  // avoid animation lag
         self.filterLayer?.contents = cgImage
+        CATransaction.commit()
       }
     }
   }
