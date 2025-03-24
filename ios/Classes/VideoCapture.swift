@@ -37,6 +37,9 @@ public class VideoCapture: NSObject {
   var photoOutput = AVCapturePhotoOutput()
   let cameraQueue = DispatchQueue(label: "camera-queue")
   var captureCompletion: ((String?) -> Void)?
+  private let ciContext = CIContext()
+  public var videoFilterEnabled = true
+  var filterLayer: CALayer?
 
   public func setUp(
     sessionPreset: AVCaptureSession.Preset = .hd1280x720,
@@ -49,6 +52,65 @@ public class VideoCapture: NSObject {
         completion(success)
       }
     }
+  }
+
+  public var filteredFrame: CGRect {
+  return filterLayer?.frame ?? .zero
+}
+
+  func createSampleBuffer(from ciImage: CIImage, context: CIContext, size: CGSize)
+    -> CMSampleBuffer?
+  {
+    var pixelBuffer: CVPixelBuffer?
+
+    let attrs =
+      [
+        kCVPixelBufferCGImageCompatibilityKey: true,
+        kCVPixelBufferCGBitmapContextCompatibilityKey: true,
+      ] as CFDictionary
+
+    let status = CVPixelBufferCreate(
+      kCFAllocatorDefault,
+      Int(size.width),
+      Int(size.height),
+      kCVPixelFormatType_32BGRA,
+      attrs,
+      &pixelBuffer
+    )
+
+    guard status == kCVReturnSuccess, let buffer = pixelBuffer else {
+      print("❌ Failed to create pixel buffer")
+      return nil
+    }
+
+    context.render(ciImage, to: buffer)
+
+    var newSampleBuffer: CMSampleBuffer?
+    var timingInfo = CMSampleTimingInfo(
+      duration: .invalid,
+      presentationTimeStamp: .zero,
+      decodeTimeStamp: .invalid
+    )
+
+    var videoInfo: CMVideoFormatDescription?
+    CMVideoFormatDescriptionCreateForImageBuffer(
+      allocator: kCFAllocatorDefault,
+      imageBuffer: buffer,
+      formatDescriptionOut: &videoInfo
+    )
+
+    if let videoInfo = videoInfo {
+      CMSampleBufferCreateReadyWithImageBuffer(
+        allocator: kCFAllocatorDefault,
+        imageBuffer: buffer,
+        formatDescription: videoInfo,
+        sampleTiming: &timingInfo,
+        sampleBufferOut: &newSampleBuffer
+
+      )
+    }
+
+    return newSampleBuffer
   }
 
   func setUpCamera(sessionPreset: AVCaptureSession.Preset, position: AVCaptureDevice.Position)
@@ -113,21 +175,20 @@ public class VideoCapture: NSObject {
     captureSession.commitConfiguration()
     return true
   }
-    
-    public func takePicture(completion: @escaping (String?) -> Void)  {
-        let photoSettings = AVCapturePhotoSettings()
 
-        if captureDevice?.isFlashAvailable == true {
-            photoSettings.flashMode = .auto
-        }
-        
-        captureCompletion = completion
+  public func takePicture(completion: @escaping (String?) -> Void) {
+    let photoSettings = AVCapturePhotoSettings()
 
-        cameraQueue.async {
-            self.photoOutput.capturePhoto(with: photoSettings, delegate: self)
-        }
+    if captureDevice?.isFlashAvailable == true {
+      photoSettings.flashMode = .auto
     }
 
+    captureCompletion = completion
+
+    cameraQueue.async {
+      self.photoOutput.capturePhoto(with: photoSettings, delegate: self)
+    }
+  }
 
   public func start() {
     if !captureSession.isRunning {
@@ -158,10 +219,53 @@ public class VideoCapture: NSObject {
 
 extension VideoCapture: AVCaptureVideoDataOutputSampleBufferDelegate {
   public func captureOutput(
-    _ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer,
+    _ output: AVCaptureOutput,
+    didOutput sampleBuffer: CMSampleBuffer,
     from connection: AVCaptureConnection
   ) {
-    delegate?.videoCapture(self, didCaptureVideoFrame: sampleBuffer)
+    guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+
+    var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+
+    if videoFilterEnabled {
+      if let filter = CIFilter(name: "CIColorControls") {
+        filter.setValue(ciImage, forKey: kCIInputImageKey)
+        filter.setValue(0.0, forKey: kCIInputSaturationKey)
+        if let outputImage = filter.outputImage {
+          ciImage = outputImage
+        }
+      }
+    }
+
+    let frameSize = CGSize(
+      width: CVPixelBufferGetWidth(pixelBuffer),
+      height: CVPixelBufferGetHeight(pixelBuffer))
+
+    if let grayscaleSampleBuffer = createSampleBuffer(
+      from: ciImage, context: ciContext, size: frameSize)
+    {
+      delegate?.videoCapture(self, didCaptureVideoFrame: grayscaleSampleBuffer)
+    }
+
+    // Render grayscale image to filterLayer
+    DispatchQueue.main.async {
+      if self.filterLayer == nil {
+        let newLayer = CALayer()
+
+        newLayer.frame = UIScreen.main.bounds
+        newLayer.contentsGravity = .resizeAspectFill
+        self.filterLayer = newLayer
+
+        if let superlayer = self.previewLayer?.superlayer {
+          self.previewLayer?.removeFromSuperlayer() 
+          superlayer.addSublayer(newLayer)
+        }
+      }
+
+      if let cgImage = self.ciContext.createCGImage(ciImage, from: ciImage.extent) {
+        self.filterLayer?.contents = cgImage
+      }
+    }
   }
 }
 
@@ -170,31 +274,34 @@ extension VideoCapture: AVCapturePhotoCaptureDelegate {
   public func photoOutput(
     _ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?
   ) {
-      guard let data = photo.fileDataRepresentation() else {
-          captureCompletion?(nil)
-          return
-      }
+    guard let data = photo.fileDataRepresentation() else {
+      captureCompletion?(nil)
+      return
+    }
 
-      saveToDisk(imageData: data) { fileName in
-          captureCompletion?(fileName)
-      }
+    saveToDisk(imageData: data) { fileName in
+      captureCompletion?(fileName)
+    }
   }
-    
-    private func saveToDisk(imageData: Data, completion: (String?) -> Void) {
-       guard let documentsDirectory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-          completion(nil)
-          return
-       }
 
-       let fileName = "dominoes_\(UUID().uuidString).jpg"
-       let fileURL = documentsDirectory.appendingPathComponent(fileName)
-       
-       do {
-           try imageData.write(to: fileURL)
-           completion(fileName)
-       } catch {
-           completion(nil)
-       }
-     }
+  private func saveToDisk(imageData: Data, completion: (String?) -> Void) {
+    guard
+      let documentsDirectory = FileManager.default.urls(
+        for: .documentDirectory, in: .userDomainMask
+      ).first
+    else {
+      completion(nil)
+      return
+    }
+
+    let fileName = "dominoes_\(UUID().uuidString).jpg"
+    let fileURL = documentsDirectory.appendingPathComponent(fileName)
+
+    do {
+      try imageData.write(to: fileURL)
+      completion(fileName)
+    } catch {
+      completion(nil)
+    }
+  }
 }
-
